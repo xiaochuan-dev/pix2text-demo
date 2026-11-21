@@ -157,29 +157,66 @@ def extract_formulas_from_images(
 
     return all_results
 
-# ==================== 主流程 ====================
-if __name__ == "__main__":
-    # 1. 下载并解压
-    pdf_files = download_and_unzip_pdfs(
-        repo_id="xiaochuan-dev/pdf",
-        filename="pdf.zip",
-        local_dir="./downloaded_pdfs",
+# ==================== 2. 获取已有图片 ====================
+def get_existing_images(
+    image_dir: str = "./pdf_images",
+) -> List[Path]:
+    """
+    获取已经渲染好的图片，支持 PNG、JPG、JPEG、WEBP
+    """
+    image_dir = Path(image_dir)
+
+    if not image_dir.exists():
+        return []
+
+    extensions = {".png", ".jpg", ".jpeg", ".webp"}
+
+    image_paths = sorted(
+        p for p in image_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in extensions
     )
 
-    # 2. 把所有 PDF 渲染成图片
-    all_image_paths = []
-    for pdf in pdf_files:
-        images = pdf_to_images(
-            pdf_path=pdf,
-            output_dir="./pdf_images",
-            dpi=200,            # 可根据需要调整，推荐 150~250
-            max_pages=None,     # 想先测试可以改成 5 或 10
+    return image_paths
+
+# ==================== 主流程 ====================
+# ==================== 主流程 ====================
+if __name__ == "__main__":
+
+    IMAGE_DIR = "./pdf_images"
+
+    # 1. 优先检查是否已经存在图片
+    all_image_paths = get_existing_images(IMAGE_DIR)
+
+    if all_image_paths:
+        print(f"发现已有图片，共 {len(all_image_paths)} 张")
+        print("跳过 PDF 下载和渲染步骤")
+
+    else:
+        print("没有发现已有图片，开始下载 PDF 并渲染...")
+
+        # 下载并解压 PDF
+        pdf_files = download_and_unzip_pdfs(
+            repo_id="xiaochuan-dev/pdf",
+            filename="pdf.zip",
+            local_dir="./downloaded_pdfs",
         )
-        all_image_paths.extend(images)
 
-    print(f"\n总共生成了 {len(all_image_paths)} 张图片")
+        # PDF 渲染成图片
+        for pdf in pdf_files:
+            images = pdf_to_images(
+                pdf_path=pdf,
+                output_dir=IMAGE_DIR,
+                dpi=200,
+                max_pages=None,
+            )
+            all_image_paths.extend(images)
 
-    # 3. 公式识别 + 切割
+    print(f"\n总共准备处理 {len(all_image_paths)} 张图片")
+
+    if not all_image_paths:
+        raise RuntimeError("没有找到可处理的图片")
+
+    # 2. 公式检测 + 裁剪 + 识别
     results = extract_formulas_from_images(
         image_list=all_image_paths,
         output_dir="formula_crops",
@@ -187,12 +224,15 @@ if __name__ == "__main__":
         save_crops=True,
     )
 
-    # 4. 打印结果
+    # 3. 打印结果
     total_formulas = 0
+
     for res in results:
         total_formulas += res["formula_count"]
+
         if res["formula_count"] > 0:
             print(f"\n===== {res['image_name']} =====")
+
             for i, f in enumerate(res["formulas"], 1):
                 print(f"【公式 {i}】{f['type']}")
                 print(f"LaTeX: {f['latex']}")
